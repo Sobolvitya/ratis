@@ -390,29 +390,17 @@ public class PassiveRole extends InactiveRole {
       return queryForward(request);
     }
 
-    // If the session's consistency level is SEQUENTIAL, handle the request here, otherwise forward it.
-    if (session.readConsistency() == ReadConsistency.SEQUENTIAL) {
+    // Reads will be conducted always from local without any forwarding
+    final Indexed<QueryEntry> entry = new Indexed<>(
+            request.index(),
+            new QueryEntry(
+                    raft.getTerm(),
+                    System.currentTimeMillis(),
+                    request.session(),
+                    request.sequenceNumber(),
+                    request.operation()), 0);
 
-      // If the commit index is not in the log then we've fallen too far behind the leader to perform a local query.
-      // Forward the request to the leader.
-      if (raft.getLogWriter().getLastIndex() < raft.getCommitIndex()) {
-        log.trace("State out of sync, forwarding query to leader");
-        return queryForward(request);
-      }
-
-      final Indexed<QueryEntry> entry = new Indexed<>(
-          request.index(),
-          new QueryEntry(
-              raft.getTerm(),
-              System.currentTimeMillis(),
-              request.session(),
-              request.sequenceNumber(),
-              request.operation()), 0);
-
-      return applyQuery(entry).thenApply(this::logResponse);
-    } else {
-      return queryForward(request);
-    }
+    return applyQuery(entry).thenApply(this::logResponse);
   }
 
   /**
